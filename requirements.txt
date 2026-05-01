@@ -1,0 +1,11 @@
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+scipy
+category_encoders
+xgboost
+streamlit
+jupyter
+joblib

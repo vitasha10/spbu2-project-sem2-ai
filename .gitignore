@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+data/hotels.csv
+models/*.pkl
+TODO.md
+EXPLAIN_FOR_TEAM.md
+.idea/
+.vscode/
+*.egg-info/
