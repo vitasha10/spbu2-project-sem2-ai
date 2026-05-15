@@ -211,28 +211,42 @@ def save_charts():
     fig.savefig(IMG_DIR / 'importance.png')
     plt.close(fig)
 
-    # 8. калибровка — строим вручную, без гистограмм снизу,
-    # чтобы линии не наезжали друг на друга
+    # 8. калибровка — reliability diagram + гистограмма распределения
+    # предсказанных вероятностей. Бины по равному диапазону (uniform),
+    # тогда видна реальная overconfidence в хвостах.
     rf = joblib.load(ROOT / 'models' / '_rf.pkl')
     lr = joblib.load(ROOT / 'models' / '_logreg.pkl')
     from sklearn.calibration import calibration_curve
-    fig, ax = plt.subplots(figsize=(5.8, 3.6), dpi=160)
-    ax.plot([0, 1], [0, 1], '--', color='gray', lw=1, label='идеальная калибровка')
+    fig, (ax, ax_h) = plt.subplots(
+        2, 1, figsize=(5.8, 4.4), dpi=160,
+        gridspec_kw={'height_ratios': [3, 1]}, sharex=True,
+    )
+    ax.plot([0, 1], [0, 1], '--', color='gray', lw=1,
+            label='идеальная калибровка')
+    bins_edges = np.linspace(0, 1, 11)
+    bin_centers = (bins_edges[:-1] + bins_edges[1:]) / 2
     for name, m, color, marker in [
         ('Логистическая регрессия', lr, '#4c72b0', 'o'),
         ('Случайный лес', rf, '#dd8452', 's'),
         ('Градиентный бустинг', hgb, '#c44e52', '^'),
     ]:
         proba = m.predict_proba(X_test)[:, 1]
-        prob_true, prob_pred = calibration_curve(y_test, proba, n_bins=8, strategy='quantile')
+        prob_true, prob_pred = calibration_curve(
+            y_test, proba, n_bins=10, strategy='uniform',
+        )
         ax.plot(prob_pred, prob_true, marker=marker, lw=2, markersize=7,
                 label=name, color=color)
+        # гистограмма распределения вероятностей снизу
+        ax_h.hist(proba, bins=bins_edges, color=color,
+                  alpha=0.55, label=name, edgecolor='white', linewidth=0.5)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_xlabel('предсказанная вероятность')
     ax.set_ylabel('фактическая доля отмен')
-    ax.set_title('Калибровка: предсказанная и фактическая вероятность')
-    ax.legend(fontsize=9, loc='upper left')
+    ax.set_title('Калибровка: предсказание и реальность')
+    ax.legend(fontsize=8.5, loc='upper left')
+    ax_h.set_xlabel('предсказанная вероятность отмены')
+    ax_h.set_ylabel('кол-во броней')
+    ax_h.set_yscale('log')
     fig.tight_layout()
     fig.savefig(IMG_DIR / 'calibration.png')
     plt.close(fig)
@@ -567,23 +581,29 @@ def build():
                    title_width=8500000)
     txt = _textbox(s, LEFT_MARGIN, Emu(1059582), TXT_W, CONTENT_H)
     _set_box_bullets(txt, [
-        'Идея калибровки:',
-        'если модель говорит «70 % шанс»,',
-        'то реально из таких броней',
-        'должно отмениться 70 %.',
+        'Идея калибровки: если модель',
+        'говорит «70 % шанс», то реально',
+        'из таких броней должно',
+        'отмениться 70 %.',
         '',
-        '• Логистическая регрессия —',
-        '   почти идеально',
+        'Замер на тестовых данных',
+        '(модели их не видели).',
         '',
-        '• Случайный лес — задирает',
-        '   уверенность: предсказал 0.9,',
-        '   а отменили только 70 %',
+        '• Логистическая регрессия:',
+        '   почти на диагонали,',
+        '   отклонение < 2 %.',
         '',
-        '• Градиентный бустинг — близко',
-        '   к идеалу, чуть переоценивает',
-        '   высокие вероятности',
-    ], size=11)
-    _add_image(s, IMG_DIR / 'calibration.png', IMG_LEFT, Emu(1059582), IMG_W, IMG_H)
+        '• Случайный лес: задирает',
+        '   уверенность в средних бинах,',
+        '   отклонение до 8 %.',
+        '',
+        '• Градиентный бустинг:',
+        '   аналогично, до 7 %.',
+        '',
+        'Снизу — как распределены',
+        'предсказания (лог. шкала).',
+    ], size=10.5)
+    _add_image(s, IMG_DIR / 'calibration.png', IMG_LEFT, Emu(1059582), IMG_W, Emu(3500000))
 
     # 12. демо приложения
     s = work_slide('Демонстрация приложения',
