@@ -11,18 +11,63 @@ sys.path.insert(0, str(ROOT))
 from src.features import feature_columns
 
 
-# страны которые встречались в train (как минимум 50 раз), отсортированы по частоте
-COUNTRIES = [
-    'PRT', 'GBR', 'FRA', 'ESP', 'DEU', 'ITA', 'IRL', 'BEL', 'BRA', 'NLD',
-    'USA', 'CHE', 'CN', 'AUT', 'SWE', 'CHN', 'POL', 'RUS', 'NOR', 'ROU',
-    'Unknown', 'FIN', 'ISR', 'DNK', 'AUS', 'AGO', 'LUX', 'MAR', 'ARG', 'TUR',
-    'HUN', 'JPN', 'CZE', 'IND', 'GRC', 'KOR', 'HRV', 'EST', 'IRN', 'DZA',
-    'ZAF', 'MEX', 'LTU', 'BGR', 'NZL', 'COL', 'CHL',
-]
+# страны, встречавшиеся в обучении (>=50 раз), с русскими подписями.
+# Первый код — то, что ожидает модель; вторая часть — для отображения.
+COUNTRY_RU = {
+    'PRT': 'Португалия', 'GBR': 'Великобритания', 'FRA': 'Франция',
+    'ESP': 'Испания', 'DEU': 'Германия', 'ITA': 'Италия',
+    'IRL': 'Ирландия', 'BEL': 'Бельгия', 'BRA': 'Бразилия',
+    'NLD': 'Нидерланды', 'USA': 'США', 'CHE': 'Швейцария',
+    'CN': 'Китай (CN)', 'CHN': 'Китай', 'AUT': 'Австрия',
+    'SWE': 'Швеция', 'POL': 'Польша', 'RUS': 'Россия',
+    'NOR': 'Норвегия', 'ROU': 'Румыния', 'Unknown': 'неизвестно',
+    'FIN': 'Финляндия', 'ISR': 'Израиль', 'DNK': 'Дания',
+    'AUS': 'Австралия', 'AGO': 'Ангола', 'LUX': 'Люксембург',
+    'MAR': 'Марокко', 'ARG': 'Аргентина', 'TUR': 'Турция',
+    'HUN': 'Венгрия', 'JPN': 'Япония', 'CZE': 'Чехия',
+    'IND': 'Индия', 'GRC': 'Греция', 'KOR': 'Южная Корея',
+    'HRV': 'Хорватия', 'EST': 'Эстония', 'IRN': 'Иран',
+    'DZA': 'Алжир', 'ZAF': 'ЮАР', 'MEX': 'Мексика',
+    'LTU': 'Литва', 'BGR': 'Болгария', 'NZL': 'Новая Зеландия',
+    'COL': 'Колумбия', 'CHL': 'Чили',
+}
+COUNTRY_CODES = list(COUNTRY_RU.keys())
+COUNTRY_LABELS = {f'{c} — {COUNTRY_RU[c]}': c for c in COUNTRY_CODES}
+
+# мэппинг русских подписей в значения, которые видела модель
+HOTEL = {'Городской отель': 'City Hotel', 'Курортный отель': 'Resort Hotel'}
+DEPOSIT = {
+    'Без депозита': 'No Deposit',
+    'Невозвратный': 'Non Refund',
+    'Возвратный': 'Refundable',
+}
+MARKET = {
+    'Онлайн-агентство': 'Online TA',
+    'Офлайн-агентство': 'Offline TA/TO',
+    'Прямое бронирование': 'Direct',
+    'Корпоративное': 'Corporate',
+    'Группы': 'Groups',
+    'Подарок от отеля': 'Complementary',
+    'Авиакомпания': 'Aviation',
+    'Не указано': 'Undefined',
+}
+CHANNEL = {
+    'Через агентство': 'TA/TO',
+    'Прямой': 'Direct',
+    'Корпоративный': 'Corporate',
+    'Глобальная система бронирования': 'GDS',
+    'Не указано': 'Undefined',
+}
+CUSTOMER = {
+    'Обычный гость': 'Transient',
+    'Гость в составе группы': 'Transient-Party',
+    'Контрактный': 'Contract',
+    'Группа': 'Group',
+}
 
 
 SCENARIOS = {
-    'высокий риск (Online TA + Non Refund + PRT, длинный lead_time)': {
+    'Высокий риск (онлайн-агентство, невозвратный депозит, Португалия, 200 дней)': {
         'hotel': 'City Hotel',
         'lead_time': 200,
         'adults': 2, 'children': 0, 'babies': 0,
@@ -37,7 +82,7 @@ SCENARIOS = {
         'special': 0,
         'parking': 0,
     },
-    'низкий риск (Direct + спецзапросы + парковка)': {
+    'Низкий риск (прямое бронирование, спецзапросы, парковка, семья)': {
         'hotel': 'Resort Hotel',
         'lead_time': 14,
         'adults': 2, 'children': 1, 'babies': 0,
@@ -52,7 +97,7 @@ SCENARIOS = {
         'special': 3,
         'parking': 1,
     },
-    'средний риск (Group, средний lead_time)': {
+    'Средний риск (групповая бронь, 90 дней)': {
         'hotel': 'City Hotel',
         'lead_time': 90,
         'adults': 2, 'children': 0, 'babies': 0,
@@ -67,7 +112,7 @@ SCENARIOS = {
         'special': 0,
         'parking': 0,
     },
-    'дефолтный (всё среднее)': None,  # просто используем дефолты формы
+    'Параметры по умолчанию': None,
 }
 
 
@@ -161,25 +206,22 @@ def predict(model, cols, params):
 
 st.set_page_config(page_title='Отмена брони', layout='centered')
 st.title('Прогноз отмены бронирования')
-st.caption('Модель HistGradientBoosting, обучена на Hotel Booking Demand (2015-2017).')
 
 model, cols = load_model()
 
-# --- быстрые сценарии вверху, чтобы можно было сразу кликнуть и увидеть результат ---
+# --- готовые сценарии: вертикально, по одной кнопке в строке ---
 st.subheader('Быстрый тест')
-st.caption('Готовые наборы параметров. Жмёшь - получаешь предсказание сразу.')
-sc_cols = st.columns(len(SCENARIOS))
-for (name, params), col in zip(SCENARIOS.items(), sc_cols):
-    with col:
-        if st.button(name):
-            if params is None:
-                p = default_row()
-                X = pd.DataFrame([p])[cols]
-                proba = float(model.predict_proba(X)[0, 1])
-            else:
-                proba = predict(model, cols, params)
-            st.session_state['proba'] = proba
-            st.session_state['scenario_name'] = name
+st.caption('Готовые наборы параметров. Жмёшь — получаешь предсказание сразу.')
+for name, params in SCENARIOS.items():
+    if st.button(name, use_container_width=True):
+        if params is None:
+            p = default_row()
+            X = pd.DataFrame([p])[cols]
+            proba = float(model.predict_proba(X)[0, 1])
+        else:
+            proba = predict(model, cols, params)
+        st.session_state['proba'] = proba
+        st.session_state['scenario_name'] = name
 
 st.divider()
 
@@ -188,84 +230,80 @@ st.subheader('Параметры брони')
 c1, c2 = st.columns(2)
 
 with c1:
-    hotel = st.selectbox('Тип отеля', ['City Hotel', 'Resort Hotel'])
+    hotel_ru = st.selectbox('Тип отеля', list(HOTEL.keys()))
     lead_time = st.number_input(
         'Дней до заезда',
         0, 720, 60,
-        help='Тестировать стоит 7, 60, 200. Чем больше - тем выше риск отмены.',
+        help='Тестировать стоит 7, 60, 200. Чем больше — тем выше риск отмены.',
     )
-    adults = st.number_input('Взрослых', 1, 10, 2, help='Обычно 1-3.')
-    children = st.number_input('Детей', 0, 10, 0, help='Обычно 0-2.')
-    babies = st.number_input('Младенцев', 0, 5, 0, help='Обычно 0-1.')
+    adults = st.number_input('Взрослых', 1, 10, 2, help='Обычно 1–3.')
+    children = st.number_input('Детей', 0, 10, 0, help='Обычно 0–2.')
+    babies = st.number_input('Младенцев', 0, 5, 0, help='Обычно 0–1.')
     week_nights = st.number_input(
         'Будних ночей',
         0, 30, 2,
-        help='Обычно 1-5.',
+        help='Обычно 1–5.',
     )
     weekend_nights = st.number_input(
         'Выходных ночей',
         0, 10, 1,
-        help='Обычно 0-2.',
+        help='Обычно 0–2.',
     )
     adr = st.number_input(
-        'Средняя цена за ночь (ADR), евро',
+        'Средняя цена за ночь, евро',
         0.0, 700.0, 100.0,
-        help='Типичный диапазон 50-200. Resort обычно дороже.',
+        help='Типичный диапазон 50–200. Курортный обычно дороже.',
     )
 
 with c2:
-    deposit_type = st.selectbox(
+    deposit_ru = st.selectbox(
         'Тип депозита',
-        ['No Deposit', 'Non Refund', 'Refundable'],
-        help='Non Refund в этом датасете почти всегда даёт отмену - особенность данных.',
+        list(DEPOSIT.keys()),
+        help='Невозвратный депозит в этих данных почти всегда даёт отмену — особенность датасета.',
     )
-    market = st.selectbox(
-        'Канал продажи',
-        ['Online TA', 'Offline TA/TO', 'Direct', 'Corporate',
-         'Groups', 'Complementary', 'Aviation', 'Undefined'],
-    )
-    channel = st.selectbox(
-        'Канал дистрибуции',
-        ['TA/TO', 'Direct', 'Corporate', 'GDS', 'Undefined'],
-    )
-    customer = st.selectbox(
-        'Тип клиента',
-        ['Transient', 'Transient-Party', 'Contract', 'Group'],
-    )
-    country = st.selectbox(
+    market_ru = st.selectbox('Канал продажи', list(MARKET.keys()))
+    channel_ru = st.selectbox('Канал дистрибуции', list(CHANNEL.keys()))
+    customer_ru = st.selectbox('Тип клиента', list(CUSTOMER.keys()))
+    country_label = st.selectbox(
         'Страна клиента',
-        COUNTRIES,
+        list(COUNTRY_LABELS.keys()),
         index=0,
-        help='Список ограничен странами, которые встречались в обучающих данных.',
+        help='В списке только страны, которые встречались в обучающих данных.',
     )
     prev_cancel = st.number_input(
         'Прошлых отмен у клиента',
         0, 50, 0,
-        help='Обычно 0. Стоит попробовать 1-3 для повышения риска.',
+        help='Обычно 0. Попробуй 1–3, чтобы повысить риск.',
     )
     special = st.number_input(
-        'Спец-запросов',
+        'Спецзапросов от клиента',
         0, 10, 1,
-        help='Обычно 0-3. Больше запросов - меньше отмен.',
+        help='Обычно 0–3. Больше запросов — меньше отмен.',
     )
     parking = st.number_input(
         'Запрошено мест парковки',
         0, 5, 0,
-        help='Обычно 0 или 1. 1 заметно снижает риск.',
+        help='Обычно 0 или 1. Значение 1 заметно снижает риск.',
     )
 
 
 if st.button('Посчитать', type='primary'):
     params = dict(
-        hotel=hotel, lead_time=lead_time,
+        hotel=HOTEL[hotel_ru],
+        lead_time=lead_time,
         adults=adults, children=children, babies=babies,
         week_nights=week_nights, weekend_nights=weekend_nights,
-        adr=adr, deposit_type=deposit_type, market=market, channel=channel,
-        customer=customer, country=country, prev_cancel=prev_cancel,
+        adr=adr,
+        deposit_type=DEPOSIT[deposit_ru],
+        market=MARKET[market_ru],
+        channel=CHANNEL[channel_ru],
+        customer=CUSTOMER[customer_ru],
+        country=COUNTRY_LABELS[country_label],
+        prev_cancel=prev_cancel,
         special=special, parking=parking,
     )
     st.session_state['proba'] = predict(model, cols, params)
-    st.session_state['scenario_name'] = 'ручной ввод'
+    st.session_state['scenario_name'] = 'Ручной ввод'
 
 
 if 'proba' in st.session_state:
@@ -282,24 +320,27 @@ if 'proba' in st.session_state:
 
     with st.expander('Что влияет на предсказание'):
         st.write(
-            'Главные факторы по permutation importance: lead_time, country, deposit_type, '
-            'total_of_special_requests, market_segment. '
-            'Non Refund почти всегда даёт высокий прогноз - это известная особенность датасета.'
+            'Главные признаки по значимости: срок до заезда, страна клиента, тип депозита, '
+            'число спецзапросов, канал продажи. '
+            'Невозвратный депозит в этих данных почти всегда означает отмену — '
+            'это известная особенность набора.'
         )
 
 st.divider()
 
-# --- подсказка для защиты: чем гарантированно продемонстрировать модель ---
-st.subheader('Что показать на защите')
+# --- чеклист сценариев для защиты ---
+st.subheader('Чеклист')
 st.markdown(
     '''
-    1. **Высокий риск.** City Hotel, lead_time=200, deposit=Non Refund, страна PRT,
-       Online TA, без спецзапросов. Модель выдаёт около 0.95+.
-    2. **Низкий риск.** Resort, lead_time=14, Direct, страна GBR, 3 спецзапроса,
-       парковка=1, семья с ребёнком. Модель около 0.05.
-    3. **Средний.** Группа от 90 дней, Groups канал, без спецзапросов.
-       Модель в районе 0.4-0.6 - показывает что граница не острая.
-    4. Можно менять только lead_time (например 7 -> 60 -> 200) - вероятность отмены
-       растёт почти монотонно. Это самый сильный признак.
+    1. **Высокий риск.** Городской отель, срок 200 дней, невозвратный депозит,
+       клиент из Португалии, онлайн-агентство, без спецзапросов.
+       Модель выдаёт около 0.95+.
+    2. **Низкий риск.** Курортный отель, срок 14 дней, прямое бронирование,
+       клиент из Великобритании, 3 спецзапроса, парковка, семья с ребёнком.
+       Модель около 0.05.
+    3. **Средний риск.** Групповая бронь, срок 90 дней, без спецзапросов.
+       Модель примерно 0.4–0.6 — граница риска не острая.
+    4. Меняем только срок до заезда (7 → 60 → 200) — вероятность отмены растёт
+       почти монотонно. Это самый сильный признак.
     '''
 )
