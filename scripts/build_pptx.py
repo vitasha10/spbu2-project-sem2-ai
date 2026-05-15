@@ -211,41 +211,48 @@ def save_charts():
     fig.savefig(IMG_DIR / 'importance.png')
     plt.close(fig)
 
-    # 8. калибровка — reliability diagram + гистограмма распределения
-    # предсказанных вероятностей. Бины по равному диапазону (uniform),
-    # тогда видна реальная overconfidence в хвостах.
+    # 8. калибровка как residual-plot.
+    # Ось Y — отклонение «реально_отменили − предсказали».
+    # 0 = идеальная калибровка, > 0 = модель занижает, < 0 = задирает уверенность.
+    # На таком графике реальные промахи в 5–8 % видны как заметные горбы,
+    # а не сливаются с диагональю.
     rf = joblib.load(ROOT / 'models' / '_rf.pkl')
     lr = joblib.load(ROOT / 'models' / '_logreg.pkl')
     from sklearn.calibration import calibration_curve
     fig, (ax, ax_h) = plt.subplots(
-        2, 1, figsize=(5.8, 4.4), dpi=160,
+        2, 1, figsize=(6.0, 4.6), dpi=160,
         gridspec_kw={'height_ratios': [3, 1]}, sharex=True,
     )
-    ax.plot([0, 1], [0, 1], '--', color='gray', lw=1,
-            label='идеальная калибровка')
+    ax.axhline(0, ls='--', color='gray', lw=1, label='идеальная калибровка')
     bins_edges = np.linspace(0, 1, 11)
-    bin_centers = (bins_edges[:-1] + bins_edges[1:]) / 2
-    for name, m, color, marker in [
-        ('Логистическая регрессия', lr, '#4c72b0', 'o'),
-        ('Случайный лес', rf, '#dd8452', 's'),
-        ('Градиентный бустинг', hgb, '#c44e52', '^'),
-    ]:
+    series = [
+        ('Логистическая регрессия', lr, '#1f77b4', 'o', 2.0, 1.0),
+        ('Случайный лес',           rf, '#ff9f1c', 's', 2.0, 0.95),
+        ('Градиентный бустинг',     hgb, '#8b0000', '^', 2.0, 0.9),
+    ]
+    for zi, (name, m, color, marker, lw, alpha) in enumerate(series):
         proba = m.predict_proba(X_test)[:, 1]
         prob_true, prob_pred = calibration_curve(
             y_test, proba, n_bins=10, strategy='uniform',
         )
-        ax.plot(prob_pred, prob_true, marker=marker, lw=2, markersize=7,
-                label=name, color=color)
-        # гистограмма распределения вероятностей снизу
+        residual = prob_true - prob_pred
+        ax.plot(prob_pred, residual, marker=marker, lw=lw, markersize=8,
+                label=name, color=color, alpha=alpha, zorder=3 + zi,
+                markeredgecolor='white', markeredgewidth=0.8)
         ax_h.hist(proba, bins=bins_edges, color=color,
-                  alpha=0.55, label=name, edgecolor='white', linewidth=0.5)
+                  alpha=0.5, label=name, edgecolor='white', linewidth=0.5,
+                  zorder=3 + zi)
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_ylabel('фактическая доля отмен')
-    ax.set_title('Калибровка: предсказание и реальность')
-    ax.legend(fontsize=8.5, loc='upper left')
+    ax.set_ylim(-0.12, 0.12)
+    ax.set_ylabel('реально − предсказали')
+    ax.set_title('Ошибка калибровки по диапазонам вероятности')
+    ax.text(0.02, 0.10, 'выше нуля: модель занизила риск',
+            fontsize=8.5, color='gray')
+    ax.text(0.02, -0.11, 'ниже нуля: модель задирает уверенность',
+            fontsize=8.5, color='gray')
+    ax.legend(fontsize=8.5, loc='lower right', framealpha=0.9)
     ax_h.set_xlabel('предсказанная вероятность отмены')
-    ax_h.set_ylabel('кол-во броней')
+    ax_h.set_ylabel('броней (лог.)')
     ax_h.set_yscale('log')
     fig.tight_layout()
     fig.savefig(IMG_DIR / 'calibration.png')
@@ -586,24 +593,25 @@ def build():
         'из таких броней должно',
         'отмениться 70 %.',
         '',
-        'Замер на тестовых данных',
-        '(модели их не видели).',
+        'На графике справа — насколько',
+        'модель промахивается.',
+        'Ноль — идеальная калибровка.',
         '',
         '• Логистическая регрессия:',
-        '   почти на диагонали,',
-        '   отклонение < 2 %.',
+        '   почти на нуле, промах < 2 %.',
         '',
-        '• Случайный лес: задирает',
-        '   уверенность в средних бинах,',
-        '   отклонение до 8 %.',
+        '• Случайный лес: уходит ниже',
+        '   нуля в средней зоне —',
+        '   задирает уверенность до 8 %.',
         '',
-        '• Градиентный бустинг:',
-        '   аналогично, до 7 %.',
+        '• Градиентный бустинг —',
+        '   похожая картина, до 7 %.',
         '',
-        'Снизу — как распределены',
-        'предсказания (лог. шкала).',
+        'Снизу видно, что большинство',
+        'броней получают вероятность',
+        'меньше 0.3 (лог. шкала).',
     ], size=10.5)
-    _add_image(s, IMG_DIR / 'calibration.png', IMG_LEFT, Emu(1059582), IMG_W, Emu(3500000))
+    _add_image(s, IMG_DIR / 'calibration.png', IMG_LEFT, Emu(900000), IMG_W, Emu(3800000))
 
     # 12. демо приложения
     s = work_slide('Демонстрация приложения',
