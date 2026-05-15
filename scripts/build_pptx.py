@@ -14,6 +14,9 @@ import pandas as pd
 import seaborn as sns
 from pptx import Presentation
 from pptx.util import Pt, Emu
+from pptx.dml.color import RGBColor
+
+SPBGU_RED = RGBColor(0x95, 0x37, 0x34)
 
 import joblib
 from sklearn.calibration import CalibrationDisplay
@@ -307,15 +310,26 @@ def _set_box_bullets(box, bullets, size=13):
 
 
 def _set_title(slide, text, size=22, width_emu=None):
-    """Заголовок слайда (placeholder idx=0).
-
-    width_emu — опционально расширить placeholder, чтобы заголовок влезал в одну строку.
+    """Заголовок слайда. Не использует placeholder (на нём ломалась
+    позиция при расширении ширины), вместо этого добавляет свой textbox
+    с фиксированной позицией в верхней части слайда и красным цветом СПбГУ.
     """
+    # Очищаем шаблонный placeholder, чтобы он не вылезал поверх своим текстом
     ph = _placeholder(slide, 0)
     if ph is not None:
-        if width_emu is not None:
-            ph.width = Emu(width_emu)
-        _set_text(ph, text, size=size, bold=True)
+        ph.text_frame.clear()
+
+    # Свой заголовок: широкий textbox по верхней кромке
+    w = width_emu if width_emu is not None else 8500000
+    box = slide.shapes.add_textbox(Emu(323528), Emu(220000), Emu(w), Emu(550000))
+    tf = box.text_frame
+    tf.word_wrap = False
+    p = tf.paragraphs[0]
+    run = p.add_run()
+    run.text = text
+    run.font.size = Pt(size)
+    run.font.bold = True
+    run.font.color.rgb = SPBGU_RED
 
 
 def build():
@@ -620,13 +634,13 @@ def build():
         '      кодирование даёт среднее по миру — точность падает.',
     ], size=12)
 
-    # 14. закрывающий — крупная надпись по центру, без подписей
+    # 14. закрывающий — крупная надпись по центру, красным
     s = pres.slides.add_slide(L_close)
-    # очищаем дефолтные placeholder'ы шаблона
+    # очищаем дефолтные placeholder'ы шаблона, чтобы они не светились
     for ph in list(s.placeholders):
-        _set_text(ph, '', size=1)
+        ph.text_frame.clear()
     # центрированная надпись на всю площадь слайда
-    box = _textbox(s, Emu(0), Emu(1800000), SLIDE_W, Emu(1500000))
+    box = _textbox(s, Emu(0), Emu(2000000), SLIDE_W, Emu(1200000))
     tf = box.text_frame
     tf.word_wrap = True
     from pptx.enum.text import PP_ALIGN
@@ -636,6 +650,7 @@ def build():
     run.text = 'Спасибо за внимание'
     run.font.size = Pt(54)
     run.font.bold = True
+    run.font.color.rgb = SPBGU_RED
 
     pres.save(str(OUT_PPTX))
     print('saved:', OUT_PPTX)
